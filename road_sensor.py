@@ -78,7 +78,7 @@ class GlobalObjects:
                               [299,719], [100, 550], [640, 425]]]))
 
 
-class LaneFinder(object):
+class RoadSensor(object):
     """
     The mighty LaneFinder takes in a video from the front camera of a self driving car
     and produces a new video with the traffic lanes highlighted and statistics about where
@@ -101,13 +101,20 @@ class LaneFinder(object):
         """The pipeline for processing images. Globals g are added to functions that need
         access to global variables.
         """
-        resized     = self.__resize_image(img)
-        undistorted = self.__correct_distortion(resized)
-        warped      = self.__warp_image_to_biv(undistorted)
-        thresholded = self.__threshold_image(warped)
-        lines       = self.__get_lane_lines(thresholded)
-        result      = self.__draw_lane_lines(undistorted, thresholded, include_stats=True)
-        #enhanced    = self.__enhance_image(result)
+        
+        ##### Lane finding pipeline #######
+        # resized     = self.__resize_image(img)
+        # undistorted = self.__correct_distortion(resized)
+        # warped      = self.__warp_image_to_biv(undistorted)
+        # thresholded = self.__threshold_image(warped)
+        # lines       = self.__get_lane_lines(thresholded)
+        # result      = self.__draw_lane_lines(undistorted, thresholded, include_stats=True)
+        # # enhanced    = self.__enhance_image(result) #not needed.
+
+
+        ##### Vehicle Tracking pipeline #####
+
+        result = img
 
         return result
 
