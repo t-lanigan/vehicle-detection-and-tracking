@@ -94,6 +94,7 @@ class RoadSensor(object):
         self.laneDrawer    = tools.LaneDrawer()
         self.leftLane      = tools.Line()
         self.rightLane     = tools.Line()
+        # self.vTracker      = tools.VehicleTracker()
 
         return
 
@@ -103,18 +104,19 @@ class RoadSensor(object):
         """
         
         ##### Lane finding pipeline #######
-        # resized     = self.__resize_image(img)
-        # undistorted = self.__correct_distortion(resized)
-        # warped      = self.__warp_image_to_biv(undistorted)
-        # thresholded = self.__threshold_image(warped)
-        # lines       = self.__get_lane_lines(thresholded)
-        # result      = self.__draw_lane_lines(undistorted, thresholded, include_stats=True)
-        # # enhanced    = self.__enhance_image(result) #not needed.
+        resized     = self.__resize_image(img)
+        undistorted = self.__correct_distortion(resized)
+        warped      = self.__warp_image_to_biv(undistorted)
+        thresholded = self.__threshold_image(warped)
+        lines       = self.__get_lane_lines(thresholded)
+        result      = self.__draw_lane_lines(undistorted, thresholded, include_stats=True)
 
 
         ##### Vehicle Tracking pipeline #####
 
-        result = img
+
+
+        # result = img
 
         return result
 

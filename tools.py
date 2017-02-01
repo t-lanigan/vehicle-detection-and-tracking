@@ -324,7 +324,7 @@ class LaneDrawer:
         return img
         
 
-    def __get_offset_average(self, new_offset, n=5):
+    def __get_offset_average(self, new_offset, n=10):
         """
         Finds a running average of the center offsets. 
         """
@@ -406,7 +406,10 @@ class LaneDrawer:
         else:
             offset_text = 'Vehicle is ' + str(np.around(offset,2)) + 'm right of center'
 
-        curve_text = 'Road radius of curvature: ' + str(np.around(stats['average_curve'],-1))  +' m' 
+        if np.absolute(stats['average_curve'] > 2000):
+            curve_text = "Road is straight."
+        else:
+            curve_text = 'Road radius of curvature: ' + str(np.around(stats['average_curve'],-1))  +' m' 
         
         cv2.putText(undist, curve_text,(10,50), font, 1,(255,255,255),2,cv2.LINE_AA)
         cv2.putText(undist, offset_text,(10,100), font, 1,(255,255,255),2,cv2.LINE_AA)
