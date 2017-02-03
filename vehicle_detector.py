@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 from skimage.feature import hog
 from sklearn.svm import LinearSVC
+from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from scipy.ndimage.measurements import label
@@ -21,8 +22,8 @@ class WindowFinder(object):
         ### Hyperparameters, if changed ->(load_saved = False) If
         ### the classifier is changes load_feaures can be True
 
-        self.load_saved     = False # Loads all saved files
-        self.load_features  = False # Loads saved features (to train new classifier)
+        self.load_saved     = True # Loads all saved files
+        self.load_features  = True # Loads saved features (to train new classifier)
 
         self.sample_size    = 15000 # How many to sample from training set
         self.color_space    = 'HSV' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
@@ -47,7 +48,9 @@ class WindowFinder(object):
                                     './data/vehicles/GTI_Right',
                                     './data/vehicles/GTI_Left']
         
-        self.clf, self.scaler = self.__get_classifier_and_scaler()
+        self.untrained_clf = LinearSVC()
+        
+        self.trained_clf, self.scaler = self.__get_classifier_and_scaler()
 
     def __get_classifier_and_scaler(self):
         """
@@ -57,10 +60,14 @@ class WindowFinder(object):
         if self.load_saved:
             print('Loading saved classifier and scaler...')
             clf = pickle.load( open( "./cache/clf.p", "rb" ) )
+            print('%s loaded...' % self.untrained_clf.__class__.__name__)
             scaler = pickle.load(open( "./cache/scaler.p", "rb" ))
         else:
             # Split up data into randomized training and test sets
-            print('Training classifier...')
+            
+
+            print('Training a %s...' % self.untrained_clf.__class__.__name__)
+            
             rand_state = np.random.randint(0, 100)
             
             # TODO: Get scaled_X, and y here.
@@ -73,7 +80,7 @@ class WindowFinder(object):
                 scaled_X, y, test_size=0.2, random_state=rand_state)
 
             # Use a linear SVC 
-            clf = LinearSVC()
+            clf = self.untrained_clf
             # Check the training time for the SVC
             t=time.time()
             clf.fit(X_train, y_train)
@@ -271,7 +278,7 @@ class WindowFinder(object):
             #5) Scale extracted features to be fed to classifier
             test_features = self.scaler.transform(np.array(features).reshape(1, -1))
             #6) Predict using your classifier
-            prediction = self.clf.predict(test_features)
+            prediction = self.trained_clf.predict(test_features)
             #7) If positive (prediction == 1) then save the window
             if prediction == 1:
                 on_windows.append(window)
@@ -283,7 +290,7 @@ class WindowFinder(object):
         Draws the search grid and the hot windows.
         """
 
-        print('Hot Windows...', hot_windows)
+        # print('Hot Windows...', hot_windows)
         search_grid_img = self.__draw_boxes(img, windows, color=(0, 0, 255), thick=6)                    
         hot_window_img = self.__draw_boxes(img, hot_windows, color=(0, 0, 255), thick=6)                    
 
@@ -365,37 +372,86 @@ class WindowFinder(object):
 
         return hot_windows
 
+class HeatMapper(object):
+    """The Heat Mapper takes in an image, and makes a blank
+       heatmap.
+
+       - add_heat(windows), will add heat in the windows.
+
+       - apply_threshold() thresholds the heatmap
+
+       - get_heatmap returns the heatmap.
+
+       - visualise_heatmap_and_result() gives a dubugging image.
+
+    """
+    def __init__(self, img):
+        self.img = img
+        self.heatmap = np.zeros_like(img[:,:,0]).astype(np.float)
+
+    def add_heat(self, bbox_list):
+        """
+        Adds +1 heat for all areas in boxes
+        """
+        # Iterate through list of bboxes
+        for box in bbox_list:
+            # Add += 1 for all pixels inside each bbox
+            # Assuming each "box" takes the form ((x1, y1), (x2, y2))
+            self.heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
+
+        # Return updated heatmap
+        return True
+
+    def apply_threshold(self, threshold):
+        # Zero out pixels below the threshold
+        self.heatmap[self.heatmap <= threshold] = 0
+        # Return thresholded map
+        return True
+
+    def __draw_labeled_bboxes(self, img, labels):
+        """
+        Iterate through all detected cars.
+        """
+
+        for car_number in range(1, labels[1]+1):
+            # Find pixels with each car_number label value
+            nonzero = (labels[0] == car_number).nonzero()
+            # Identify x and y values of those pixels
+            nonzeroy = np.array(nonzero[0])
+            nonzerox = np.array(nonzero[1])
+            # Define a bounding box based on min/max x and y
+            bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
+            # Draw the box on the image
+            cv2.rectangle(img, bbox[0], bbox[1], (0,0,255), 6)
+        # Return the image
+        return img
+
+    def get_heatmap(self):
+        """
+        Returns the heatmap.
+        """
+        return self.heatmap
+
+    def visualise_heatmap_and_result(self):
+
+        labels = label(self.heatmap)
+        draw_img = self.__draw_labeled_bboxes(np.copy(self.img), labels)
+
+        print('Cars found:', labels[1])
+        # plt.imshow(labels[0], cmap='gray')
+
+        f, (ax1, ax2) = plt.subplots(1, 2, figsize=(10,6))
+        f.tight_layout()
+        ax1.imshow(self.heatmap, cmap='hot')
+        ax1.set_title('Heat Map')
+        ax2.imshow(draw_img)
+        ax2.set_title('Draw Window')
+        plt.show()
+        pass
 
 
-def add_heat(self, heatmap, bbox_list):
-    # Iterate through list of bboxes
-    for box in bbox_list:
-        # Add += 1 for all pixels inside each bbox
-        # Assuming each "box" takes the form ((x1, y1), (x2, y2))
-        heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
 
-    # Return updated heatmap
-    return heatmap
 
-def apply_threshold(self, heatmap, threshold):
-    # Zero out pixels below the threshold
-    heatmap[heatmap <= threshold] = 0
-    # Return thresholded map
-    return heatmap
 
-def draw_labeled_bboxes(img, labels):
-    # Iterate through all detected cars
-    for car_number in range(1, labels[1]+1):
-        # Find pixels with each car_number label value
-        nonzero = (labels[0] == car_number).nonzero()
-        # Identify x and y values of those pixels
-        nonzeroy = np.array(nonzero[0])
-        nonzerox = np.array(nonzero[1])
-        # Define a bounding box based on min/max x and y
-        bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
-        # Draw the box on the image
-        cv2.rectangle(img, bbox[0], bbox[1], (0,0,255), 6)
-    # Return the image
-    return img
 
 
