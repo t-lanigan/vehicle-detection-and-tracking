@@ -8,6 +8,8 @@ from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from scipy.ndimage.measurements import label
+import keras
+from keras.models import load_model
 
 import glob
 
@@ -51,6 +53,10 @@ class WindowFinder(object):
         self.untrained_clf = LinearSVC()
         
         self.trained_clf, self.scaler = self.__get_classifier_and_scaler()
+
+        self.nn = load_model('models/keras.h5')
+
+
 
     def __get_classifier_and_scaler(self):
         """
@@ -271,19 +277,39 @@ class WindowFinder(object):
         on_windows = []
         #2) Iterate over all windows in the list
         for window in windows:
-            #3) Extract the test window from original image
-            test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]], (64, 64))      
-            #4) Extract features for that window using single_img_features()
-            features = self.__single_img_features(test_img)
-            #5) Scale extracted features to be fed to classifier
-            test_features = self.scaler.transform(np.array(features).reshape(1, -1))
-            #6) Predict using your classifier
-            prediction = self.trained_clf.predict(test_features)
-            #7) If positive (prediction == 1) then save the window
+
+
+            # test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]], (64, 64))
+            # features = self.__single_img_features(test_img)
+            # test_features = self.scaler.transform(np.array(features).reshape(1, -1))
+            # prediction = self.trained_clf.predict(test_features)
+
+
+            # ## Neural Network Predicion
+            test_img = img[window[0][1]:window[1][1], window[0][0]:window[1][0]]
+            img = np.copy(test_img)
+            img = self.__preprocess_image(img)
+            img = np.reshape(img, (1,64,64,3))
+            prediction = self.nn.predict_classes(img, verbose=0)
+
+
             if prediction == 1:
                 on_windows.append(window)
         #8) Return windows for positive detections
         return on_windows
+
+
+
+    def __preprocess_image(self, img):
+        """
+        preprocesses image for neural netowork.
+        """    
+        TARGET_SIZE = (64,64)
+        img = cv2.resize(img, TARGET_SIZE)
+        img = img.astype(np.float32)
+        # Normalize image
+        img = img / 255.0 - 0.5
+        return img
 
     def __visualise_searchgrid_and_hot(self, img, windows, hot_windows):
         """

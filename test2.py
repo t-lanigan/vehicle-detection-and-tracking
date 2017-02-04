@@ -3,6 +3,8 @@ from vehicle_detector import *
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 
+import cv2
+
 windFinder = WindowFinder()
 
 image = mpimg.imread('./test_images/test6.jpg')
@@ -24,5 +26,6 @@ heatMapper = HeatMapper(image)
 heatMapper.add_heat(hot_windows)
 heatMapper.apply_threshold(threshold=2)
 heatMapper.visualise_heatmap_and_result()
+
 
 
