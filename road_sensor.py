@@ -192,6 +192,7 @@ class RoadSensor(object):
         print('Finding lanes for:', vid_input_path)        
 
         # Load the Video
+        # video_clip = VideoFileClip(video_filename).subclip(10, 11)
         clip1 = VideoFileClip(vid_input_path)
 
         # Feed the video, clip by clip into the pipeline.

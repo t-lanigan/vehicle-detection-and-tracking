@@ -8,7 +8,7 @@ from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from scipy.ndimage.measurements import label
-import keras
+
 from keras.models import load_model
 
 import glob
@@ -50,11 +50,16 @@ class WindowFinder(object):
                                     './data/vehicles/GTI_Right',
                                     './data/vehicles/GTI_Left']
         
-        self.untrained_clf = LinearSVC()
-        
-        self.trained_clf, self.scaler = self.__get_classifier_and_scaler()
+        ###### Variable for Classifier and Feature Scaler ##########
+        # self.untrained_clf = LinearSVC()        
+        # self.trained_clf, self.scaler = self.__get_classifier_and_scaler()
 
-        self.nn = load_model('models/keras.h5')
+        ###### Variables for CNN ##########
+        print('Loading Neural Network...')
+        self.nn = load_model('models/keras(32x32).h5')
+        self.nn_train_size = (32,32) # size of training data used for CNN
+        self.nn.summary()
+        print('Neural Network Loaded.')
 
 
 
@@ -276,21 +281,22 @@ class WindowFinder(object):
         #1) Create an empty list to receive positive detection windows
         on_windows = []
         #2) Iterate over all windows in the list
+
         for window in windows:
 
-
+            
+            ######### SVM HOG Feature Prediction #########
             # test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]], (64, 64))
             # features = self.__single_img_features(test_img)
             # test_features = self.scaler.transform(np.array(features).reshape(1, -1))
             # prediction = self.trained_clf.predict(test_features)
 
-
-            # ## Neural Network Predicion
-            test_img = img[window[0][1]:window[1][1], window[0][0]:window[1][0]]
-            img = np.copy(test_img)
-            img = self.__preprocess_image(img)
-            img = np.reshape(img, (1,64,64,3))
-            prediction = self.nn.predict_classes(img, verbose=0)
+            ######### Neural Network Predicion ########
+            test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]],
+                                  self.nn_train_size)
+            test_img = self.__normalize_image(test_img)
+            test_img = np.reshape(test_img, (1,self.nn_train_size[0],self.nn_train_size[1],3))
+            prediction = self.nn.predict_classes(test_img, verbose=0)
 
 
             if prediction == 1:
@@ -300,12 +306,8 @@ class WindowFinder(object):
 
 
 
-    def __preprocess_image(self, img):
-        """
-        preprocesses image for neural netowork.
-        """    
-        TARGET_SIZE = (64,64)
-        img = cv2.resize(img, TARGET_SIZE)
+    def __normalize_image(self, img):
+
         img = img.astype(np.float32)
         # Normalize image
         img = img / 255.0 - 0.5
