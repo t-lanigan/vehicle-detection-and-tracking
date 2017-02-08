@@ -34,7 +34,7 @@ class WindowFinder(object):
         self.cell_per_block = 2 # HOG cells per block
         self.hog_channel    = 0 # Can be 0, 1, 2, or "ALL"
         self.spatial_size   = (16, 16) # Spatial binning dimensions
-        self.hist_bins      = 16    # Number of histogram bins
+        self.hist_bins      = 16   # Number of histogram bins
         self.spatial_feat   = True # Spatial features on or off
         self.hist_feat      = True # Histogram features on or off
         self.hog_feat       = True # HOG features on or off
@@ -51,15 +51,16 @@ class WindowFinder(object):
                                     './data/vehicles/GTI_Left']
         
         ###### Variable for Classifier and Feature Scaler ##########
-        # self.untrained_clf = LinearSVC()        
-        # self.trained_clf, self.scaler = self.__get_classifier_and_scaler()
+        self.untrained_clf = LinearSVC()        
+        self.trained_clf, self.scaler = self.__get_classifier_and_scaler()
 
         ###### Variables for CNN ##########
-        print('Loading Neural Network...')
-        self.nn = load_model('models/keras(32x32).h5')
-        self.nn_train_size = (32,32) # size of training data used for CNN
-        self.nn.summary()
-        print('Neural Network Loaded.')
+
+        # print('Loading Neural Network...')
+        # self.nn = load_model('models/keras(32x32).h5')
+        # self.nn_train_size = (32,32) # size of training data used for CNN
+        # self.nn.summary()
+        # print('Neural Network Loaded.')
 
 
 
@@ -280,6 +281,7 @@ class WindowFinder(object):
 
         #1) Create an empty list to receive positive detection windows
         on_windows = []
+
         #2) Iterate over all windows in the list
 
         for window in windows:
@@ -302,6 +304,8 @@ class WindowFinder(object):
             if prediction == 1:
                 on_windows.append(window)
         #8) Return windows for positive detections
+        print("Number of hot windows:", len(on_windows))
+        print("Number of windows:", len(windows))
         return on_windows
 
 
@@ -313,7 +317,7 @@ class WindowFinder(object):
         img = img / 255.0 - 0.5
         return img
 
-    def __visualise_searchgrid_and_hot(self, img, windows, hot_windows):
+    def __visualise_searchgrid_and_hot(self, img, windows, hot_windows, ax=None):
         """
         Draws the search grid and the hot windows.
         """
@@ -347,7 +351,7 @@ class WindowFinder(object):
         return imcopy
 
     
-    def get_hot_windows(self, img, x_start_stop,
+    def get_some_hot_windows(self, img, x_start_stop,
                                 y_start_stop, xy_window,
                                 xy_overlap,
                                 visualise=False):
@@ -399,6 +403,57 @@ class WindowFinder(object):
             self.__visualise_searchgrid_and_hot(img, window_list, hot_windows)
 
         return hot_windows
+
+
+    def get_all_hot_windows(self, img, visualise=False):
+        """
+        Defines a function that takes an image, and return all of the hot_windows. Or windows that contain a car
+
+        """
+        total_windows = []
+
+        
+        hot_windows = self.get_some_hot_windows(img, x_start_stop=[400, 1280], y_start_stop=[350, 500], 
+                                         xy_window=(100, 100),
+                                         xy_overlap=(0.5, 0.5),
+                                         visualise=False)
+
+        total_windows = self.add_windows(total_windows, hot_windows)
+
+
+
+        # hot_windows = self.get_some_hot_windows(img, x_start_stop=[400, 1280], y_start_stop=[350, 500], 
+        #                          xy_window=(100, 100),
+        #                          xy_overlap=(0.5, 0.5),
+        #                          visualise=False)
+
+        # total_windows = self.add_windows(total_windows, hot_windows)
+
+
+        
+        if visualise:
+            hot_window_img = self.__draw_boxes(img, total_windows, color=(0, 0, 255), thick=6)                    
+
+            plt.figure(figsize=(10,6))
+            plt.imshow(hot_window_img)
+            plt.tight_layout()
+            plt.show()
+            
+
+        return total_windows
+
+    def add_windows(self, total_windows, hot_windows):
+        """
+        Simple function for adding windows together.
+        """
+        if not hot_windows:
+            return total_windows
+
+        for window in hot_windows:
+            total_windows.append(window)
+        return total_windows
+
+
 
 class HeatMapper(object):
     """The Heat Mapper takes in an image, and makes a blank
@@ -460,7 +515,13 @@ class HeatMapper(object):
         """
         return self.heatmap
 
-    def visualise_heatmap_and_result(self):
+    def get_heatmap_max(self):
+        """
+        Returns the heatmap.
+        """
+        return self.heatmap.max()
+
+    def get_heatmap_and_result(self, ax=None):
 
         labels = label(self.heatmap)
         draw_img = self.__draw_labeled_bboxes(np.copy(self.img), labels)
@@ -474,8 +535,8 @@ class HeatMapper(object):
         ax1.set_title('Heat Map')
         ax2.imshow(draw_img)
         ax2.set_title('Draw Window')
-        plt.show()
-        pass
+        
+        return f
 
 
 
