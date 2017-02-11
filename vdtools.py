@@ -25,7 +25,7 @@ class WindowFinder(object):
         ### Hyperparameters, if changed ->(load_saved = False) If
         ### the classifier is changes load_feaures can be True
 
-        self.load_saved     = False # Loads classifier and scaler
+        self.load_saved     = True # Loads classifier and scaler
         self.load_features  = True # Loads saved features (to train new classifier)
 
         self.sample_size    = 15000 # How many to sample from training set
@@ -313,8 +313,8 @@ class WindowFinder(object):
                 on_windows.append(window)
 
         #8) Return windows for positive detections
-        print("Number of hot windows:", len(on_windows))
-        print("Number of windows:", len(windows))
+        # print("Number of hot windows:", len(on_windows))
+        # print("Number of windows:", len(windows))
         return on_windows
 
 
@@ -458,11 +458,12 @@ class WindowFinder(object):
         if visualise:
             window_img = self.__draw_boxes(img, hot_windows, color=(0, 0, 255), thick=6)                    
 
-            return window_img
-            # plt.figure(figsize=(10,6))
-            # plt.imshow(window_img)
-            # plt.tight_layout()
-            # plt.show()
+
+            plt.figure(figsize=(10,6))
+            plt.imshow(window_img)
+            plt.tight_layout()
+            plt.show()
+            # return window_img
             
 
         return hot_windows
@@ -551,6 +552,220 @@ class HeatMapper(object):
         ax2.set_title('Draw Window')
         
         return f
+
+    def apply_upper_threshold(self, upper):
+        """
+        Bounds the heatmap by upper threshold.
+        """
+        # Zero out pixels below the threshold
+        self.heatmap[self.heatmap > upper] = 1
+
+
+
+
+class Car():
+    def __init__(self):
+        self.average_centroid= (0,0) # average centroid
+        self.width = 0 # average box width
+        self.height = 0 # average height
+        self.detected = 0.5  # moving average
+
+
+class VehicleTracker(object):
+    """docstring for VehicleDetector"""
+    def __init__(self):
+        
+
+        ##TODO: Need to clean this up 
+        img = mpimg.imread('./test_images/test6.jpg')
+        self.heatmap = np.zeros_like(img[:,:,0]).astype(np.float) 
+        self.detected_cars = []
+
+
+    def image_pipeline(self, img, hot_windows):
+
+        # make a copy of the incial image
+        draw_img = np.copy(img)
+        
+        # find windows that contains cars
+        
+        # draw windows that contains cars
+        draw_img = self.__draw_boxes(draw_img, hot_windows, color=(0, 0, 255), thick=2) 
+
+
+        # create a new heat map
+        new_heatMapper = HeatMapper(img)
+        new_heatMapper.add_heat(hot_windows)
+        new_heatMapper.apply_upper_threshold(1)
+        new_heatmap = new_heatMapper.get_heatmap()
+        # update the heatmap with the moving average algorithm 
+        # so that, if car image are no longer detacted, that area "cool" down
+        
+        self.heatmap = 0.9*self.heatmap + 0.1*new_heatmap
+                    
+        # Blend imgage to heatmap
+        wrap_img = np.zeros_like(img) # inicalize
+        wrap_img[:,:,1] = self.heatmap[:]*250 # adding heat map
+        draw_img = cv2.addWeighted(draw_img, 1, wrap_img, 0.5, 0)
+
+        # create a new heatmap to show the heatmap with more certainty 
+        # by thresholding the heatmap value
+        heatmap_sure = np.copy(self.heatmap)
+        # get area of higher certainty by thredholding the heatmap
+        heatmap_sure = self.__apply_lower_threshold(heatmap_sure, 0.97)
+
+        # Find bounding boxes
+        labels = label(heatmap_sure)
+        bounding_boxes = self.__find_labeled_bboxes(img, labels)
+               
+        # find centroy and size of bounding box
+        centroids, box_size = self.__find_box_centroid_size(bounding_boxes)
+        
+        new_cars = [] # inicalize a list of new found cars
+        for n in range(len(centroids)):
+            # find nearby car object          
+            car_found, k = self.__track_car(centroids[n],self.detected_cars) # return a number 
+            if car_found  == True:
+                # update detected car object
+                # update centroid using moving average
+                self.detected_cars[k].average_centroid = (int(0.9*self.detected_cars[k].average_centroid[0] + 0.1*centroids[n][0]),
+                                        int(0.9*self.detected_cars[k].average_centroid[1] + 0.1*centroids[n][1]))         
+                # update bounding box width using moving average
+                self.detected_cars[k].width =   math.ceil(0.9*self.detected_cars[k].width + 0.1*box_size[n][0]) # round up
+                # update bounding box height using moving average
+                self.detected_cars[k].height =  math.ceil(0.9*self.detected_cars[k].height + 0.1*box_size[n][1])
+                # update detected value
+                self.detected_cars[k].detected = self.detected_cars[k].detected + 0.2
+
+            else: # add new car
+                new_car = Car()
+                # inicalize the car object using the size 
+                # and centroid of the bounding box
+                new_car.average_centroid = centroids[n]
+                new_car.width =  box_size[n][0]
+                new_car.height = box_size[n][1]            
+                new_cars.append(new_car)
+                
+        # combine new_cars to detected cars #################################################
+        detected_cars2 = list(self.detected_cars) # make a copy
+        self.detected_cars = new_cars[:] # add new cars
+        
+
+        if detected_cars2: # if is not empty
+            for car in detected_cars2:
+                # if the detected value greater than the threshold add to the list
+                # if not discard
+                if car.detected > 0.17: 
+                    # add to the detected cars list
+                    self.detected_cars.append(car)
+                
+        # find car object that is consistent
+        car_boxes = self.__find_car_box(detected_threshold = 0.55) #0.51
+        # draw bounding boxes on car object that is more certain
+        draw_img = self.__draw_boxes(draw_img, car_boxes, color=(255, 0, 0), thick=5)         
+                
+        # depreciate old car values, so if it no longer detacted the value fade away
+        for car in self.detected_cars:
+            car.detected = car.detected*0.8 # depreciate old value
+        
+        return draw_img
+
+    def __apply_lower_threshold(self, heatmap, lower):
+        # Zero out pixels below the threshold
+        heatmap[heatmap < lower] = 0
+        # Return thresholded map
+        return heatmap
+
+    def __find_labeled_bboxes(self, img, labels):
+        # Iterate through all detected cars
+        bboxes = []
+        for car_number in range(1, labels[1]+1):
+            # Find pixels with each car_number label value
+            nonzero = (labels[0] == car_number).nonzero()
+            # Identify x and y values of those pixels
+            nonzeroy = np.array(nonzero[0])
+            nonzerox = np.array(nonzero[1])
+            # Define a bounding box based on min/max x and y
+            bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
+            # append the bounding box to a list
+            bboxes.append(bbox)
+        # Return the bounding boxes
+        return bboxes
+
+    def __find_box_centroid_size(self, bboxes):
+        box_centroids = []
+        box_size = []
+        
+        for box in bboxes:
+            x = int((box[0][0] + box[1][0])/2)
+            y = int((box[0][1] + box[1][1])/2)
+            box_centroids.append((x,y))
+
+            width =  int((box[1][0] - box[0][0])/2)
+            height = int((box[1][1] - box[0][1])/2)
+            box_size.append((width,height))
+        return box_centroids, box_size
+
+
+    def __cal_dist(self,centroid1, centroid2):
+        x1 = centroid1[0]
+        y1 = centroid1[1]
+        x2 = centroid2[0]
+        y2 = centroid2[1]
+        return np.sqrt((x1-x2)**2 + (y1-y2)**2)
+
+    # define a function to find nearby car object 
+    def __track_car(self, cntrd,old_Cars):
+        threshod_dist = 40 # the maxium distance to consider nearby
+        Dist = [] # a list of distance
+        if not old_Cars: # if the list of nearby cars is empty
+            # return car not found 
+            car_found = False 
+            car_id = 0
+            return car_found,car_id
+        else:
+            for car in old_Cars:
+                # cacualte the distance
+                dist = self.__cal_dist(cntrd, car.average_centroid)
+                Dist.append(dist)
+            car_id = np.argmin(Dist)
+            if Dist[car_id] < threshod_dist:
+                car_found = True
+            else:
+                car_found = False
+
+    def __find_car_box(self, detected_threshold = 0.51):
+        """
+        Define bounding box of detected cars.
+        """
+        
+        box = []
+        for car in self.detected_cars:
+            if car.detected > detected_threshold:
+                offset = car.average_centroid          
+                width = car.width
+                height = car.height
+                bbox0 = (int(-width+offset[0]),
+                         int(-height+offset[1]))
+                bbox1 = (int(width+offset[0]),
+                         int(height+offset[1]))
+                box.append((bbox0,bbox1))
+        return box
+
+    # Define a function to draw bounding boxes
+    def __draw_boxes(self, img, bboxes, color=(0, 0, 255), thick=6):
+        """Draws boxes on image from a list of windows"""
+
+        # Make a copy of the image
+        imcopy = np.copy(img)
+        # Iterate through the bounding boxes
+        for bbox in bboxes:
+            # Draw a rectangle given bbox coordinates
+            cv2.rectangle(imcopy, bbox[0], bbox[1], color, thick)
+        # Return the image copy with boxes drawn
+        return imcopy
+
+        
 
 
 

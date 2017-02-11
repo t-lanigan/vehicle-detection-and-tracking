@@ -15,7 +15,8 @@ import numpy as np
 import cv2, pickle, glob, os
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-import tools
+import lftools
+import vdtools
 
 
 from moviepy.editor import VideoFileClip
@@ -88,14 +89,15 @@ class RoadSensor(object):
     def __init__(self):
 
         self.g             = GlobalObjects()        
-        self.thresholder   = tools.ImageThresholder()
-        self.distCorrector = tools.DistortionCorrector(self.g.camera_cal_folder)
-        self.histFitter    = tools.HistogramLineFitter()
-        self.laneDrawer    = tools.LaneDrawer()
-        self.leftLane      = tools.Line()
-        self.rightLane     = tools.Line()
+        self.thresholder   = lftools.ImageThresholder()
+        self.distCorrector = lftools.DistortionCorrector(self.g.camera_cal_folder)
+        self.histFitter    = lftools.HistogramLineFitter()
+        self.laneDrawer    = lftools.LaneDrawer()
+        self.leftLane      = lftools.Line()
+        self.rightLane     = lftools.Line()
         
-        self.windFinder    = tools.WindowFinder()
+        self.windFinder    = vdtools.WindowFinder()
+        self.vTracker      = vdtools.VehicleTracker()
 
         return
 
@@ -115,9 +117,8 @@ class RoadSensor(object):
 
         ##### Vehicle Tracking pipeline #####
 
-
-
-        result = img
+        hot_windows = self.windFinder.get_hot_windows(img)
+        result = self.vTracker.image_pipeline(img, hot_windows)
 
         return result
 
@@ -207,43 +208,6 @@ class RoadSensor(object):
         Tests the pipeline on one image
         """
         return self.__image_pipeline(img)
-
-    def test(self, save=False):
-        """
-        Tests the __image_pipeline on all of the images
-        in the testing folder.
-        """
-        print("Testing images...")
-
-        # Save test images
-        if save:
-            for path in self.g.test_images:
-                # Save Images
-                image = (mpimg.imread(path))
-                image = self.__image_pipeline(image)
-                savep = self.g.output_image_path + path.split('/')[1]
-                plt.imsave(savep, image)
-            print('Test images saved.')
-
-        # Display test images    
-        else:
-
-            fig = plt.figure(figsize=(10,12))
-            i = 0            
-            for path in self.g.test_images:
-                #Display images
-                ax = fig.add_subplot(4,2,i+1)
-                img = mpimg.imread(path)
-                img = self.__image_pipeline(img)
-                plt.imshow(img)
-                plt.title(path.split('/')[1])
-                ax.xaxis.set_visible(False)
-                ax.yaxis.set_visible(False)
-                i += 1
-            plt.tight_layout()
-            plt.show()             
-
-        return
 
 
 if __name__ == '__main__':
