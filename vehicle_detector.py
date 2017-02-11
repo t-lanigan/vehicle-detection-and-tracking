@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 from skimage.feature import hog
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVC, SVC
 from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from scipy.ndimage.measurements import label
@@ -24,17 +25,17 @@ class WindowFinder(object):
         ### Hyperparameters, if changed ->(load_saved = False) If
         ### the classifier is changes load_feaures can be True
 
-        self.load_saved     = True # Loads all saved files
+        self.load_saved     = False # Loads classifier and scaler
         self.load_features  = True # Loads saved features (to train new classifier)
 
         self.sample_size    = 15000 # How many to sample from training set
         self.color_space    = 'HSV' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
-        self.orient         = 9  # HOG orientations
-        self.pix_per_cell   = 8 # HOG pixels per cell
+        self.orient         = 8  # HOG orientations
+        self.pix_per_cell   = 12 # HOG pixels per cell
         self.cell_per_block = 2 # HOG cells per block
         self.hog_channel    = 0 # Can be 0, 1, 2, or "ALL"
-        self.spatial_size   = (16, 16) # Spatial binning dimensions
-        self.hist_bins      = 16   # Number of histogram bins
+        self.spatial_size   = (8, 8) # Spatial binning dimensions
+        self.hist_bins      = 12   # Number of histogram bins
         self.spatial_feat   = True # Spatial features on or off
         self.hist_feat      = True # Histogram features on or off
         self.hog_feat       = True # HOG features on or off
@@ -49,9 +50,17 @@ class WindowFinder(object):
                                     './data/vehicles/KITTI_extracted',
                                     './data/vehicles/GTI_Right',
                                     './data/vehicles/GTI_Left']
+
+        ######Classifiers                            
+        self.pred_thresh = 0.58 #Increase to decrease likelihood of detection.
         
         ###### Variable for Classifier and Feature Scaler ##########
-        self.untrained_clf = LinearSVC()        
+        self.untrained_clf = RandomForestClassifier(n_estimators=100, max_features = 2,
+                             min_samples_leaf = 4,max_depth = 25)
+
+        
+
+                
         self.trained_clf, self.scaler = self.__get_classifier_and_scaler()
 
         ###### Variables for CNN ##########
@@ -89,7 +98,7 @@ class WindowFinder(object):
 
 
             X_train, X_test, y_train, y_test = train_test_split(
-                scaled_X, y, test_size=0.2, random_state=rand_state)
+                scaled_X, y, test_size=0.15, random_state=rand_state)
 
             # Use a linear SVC 
             clf = self.untrained_clf
@@ -179,38 +188,37 @@ class WindowFinder(object):
         #1) Define an empty list to receive features
         img_features = []
         #2) Apply color conversion if other than 'RGB'
-        if self.color_space != 'RGB':
-            if self.color_space == 'HSV':
-                feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-            elif self.color_space == 'LUV':
-                feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2LUV)
-            elif self.color_space == 'HLS':
-                feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
-            elif self.color_space == 'YUV':
-                feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
-            elif self.color_space == 'YCrCb':
-                feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
-        else: feature_image = np.copy(img)      
+
+        hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)# convert it to HLS
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+   
         #3) Compute spatial features if flag is set
         if self.spatial_feat == True:
-            spatial_features = self.__bin_spatial(feature_image)
-            #4) Append features to list
-            img_features.append(spatial_features)
+            spatial_hls = self.__bin_spatial(hls)
+            spatial_rgb = self.__bin_spatial(img)
+
+            img_features.append(spatial_hls)
+            img_features.append(spatial_rgb)
+
         #5) Compute histogram features if flag is set
         if self.hist_feat == True:
-            hist_features = self.__color_hist(feature_image)
+            hist_features_hls = self.__color_hist(hls)
+            hist_features_rgb = self.__color_hist(img)
             #6) Append features to list
-            img_features.append(hist_features)
+            img_features.append(hist_features_hls)
+            img_features.append(hist_features_rgb)
         #7) Compute HOG features if flag is set
         if self.hog_feat == True:
-            if self.hog_channel == 'ALL':
-                hog_features = []
-                for channel in range(feature_image.shape[2]):
-                    hog_features.extend(self.__get_hog_features(feature_image[:,:,channel],
-                                        vis=False, feature_vec=True))      
-            else:
-                hog_features = self.__get_hog_features(feature_image[:,:,self.hog_channel],
-                                                       vis=False, feature_vec=True)
+
+            hog_features = self.__get_hog_features(gray, vis=False, feature_vec=True)
+            # if self.hog_channel == 'ALL':
+            #     hog_features = []
+            #     for channel in range(img.shape[2]):
+            #         hog_features.extend(self.__get_hog_features(img[:,:,channel],
+            #                             vis=False, feature_vec=True))      
+            # else:
+            #     hog_features = self.__get_hog_features(feature_image[:,:,self.hog_channel],
+            #                                            vis=False, feature_vec=True)
             #8) Append features to list
             img_features.append(hog_features)
 
@@ -287,22 +295,23 @@ class WindowFinder(object):
         for window in windows:
 
             
-            ######### SVM HOG Feature Prediction #########
-            # test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]], (64, 64))
-            # features = self.__single_img_features(test_img)
-            # test_features = self.scaler.transform(np.array(features).reshape(1, -1))
-            # prediction = self.trained_clf.predict(test_features)
+            ######### Classifier HOG Feature Prediction #########
+            test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]], (64, 64))
+            features = self.__single_img_features(test_img)
+            test_features = self.scaler.transform(np.array(features).reshape(1, -1))
+            prediction = self.trained_clf.predict_proba(test_features)[:,1]
 
             ######### Neural Network Predicion ########
-            test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]],
-                                  self.nn_train_size)
-            test_img = self.__normalize_image(test_img)
-            test_img = np.reshape(test_img, (1,self.nn_train_size[0],self.nn_train_size[1],3))
-            prediction = self.nn.predict_classes(test_img, verbose=0)
+            # test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]],
+            #                       self.nn_train_size)
+            # test_img = self.__normalize_image(test_img)
+            # test_img = np.reshape(test_img, (1,self.nn_train_size[0],self.nn_train_size[1],3))
+            # prediction = self.nn.predict_classes(test_img, verbose=0)
 
 
-            if prediction == 1:
+            if prediction > self.pred_thresh:
                 on_windows.append(window)
+
         #8) Return windows for positive detections
         print("Number of hot windows:", len(on_windows))
         print("Number of windows:", len(windows))
@@ -351,7 +360,7 @@ class WindowFinder(object):
         return imcopy
 
     
-    def get_some_hot_windows(self, img, x_start_stop,
+    def __slide_windows(self, img, x_start_stop,
                                 y_start_stop, xy_window,
                                 xy_overlap,
                                 visualise=False):
@@ -396,62 +405,67 @@ class WindowFinder(object):
                 # Append window position to list
                 window_list.append(((startx, starty), (endx, endy)))
         
-        # Classify windows
-        hot_windows = self.__classify_windows(img, window_list)
-        
-        if visualise:
-            self.__visualise_searchgrid_and_hot(img, window_list, hot_windows)
-
-        return hot_windows
+        return window_list
 
 
-    def get_all_hot_windows(self, img, visualise=False):
+    def get_hot_windows(self, img, visualise=False):
         """
         Defines a function that takes an image, and return all of the hot_windows. Or windows that contain a car
 
         """
-        total_windows = []
+        windows_list = []
 
-        
-        hot_windows = self.get_some_hot_windows(img, x_start_stop=[400, 1280], y_start_stop=[350, 500], 
-                                         xy_window=(100, 100),
-                                         xy_overlap=(0.5, 0.5),
-                                         visualise=False)
+        x_min =[300, 1280]
+        y_min =[400, 530]
+        xy_min = (80, 80)
 
-        total_windows = self.add_windows(total_windows, hot_windows)
+        # define the maxium window size
+        x_max =[300, 1280]
+        y_max =[400, 700]
+        xy_max = (160, 160)
+        # intermedian windows
+        n = 4 # the number of total window sizes
+        x = []
+        y = []
+        xy =[]
+        # chose the intermediate sizes by interpolation.
+        for i in range(n):
+            x_start_stop =[int(x_min[0] + i*(x_max[0]-x_min[0])/(n-1)), 
+                           int(x_min[1] + i*(x_max[1]-x_min[1])/(n-1))]
+            y_start_stop =[int(y_min[0] + i*(y_max[0]-y_min[0])/(n-1)), 
+                           int(y_min[1] + i*(y_max[1]-y_min[1])/(n-1))]
+            xy_window    =[int(xy_min[0] + i*(xy_max[0]-xy_min[0])/(n-1)), 
+                           int(xy_min[1] + i*(xy_max[1]-xy_min[1])/(n-1))]
+            x.append(x_start_stop)
+            y.append(y_start_stop)
+            xy.append(xy_window)
+
+        windows1 = self.__slide_windows(img, x_start_stop= x[0], y_start_stop = y[0], 
+                            xy_window= xy[0], xy_overlap=(0.5, 0.5))
+        windows2 = self.__slide_windows(img, x_start_stop= x[1], y_start_stop = y[1], 
+                            xy_window= xy[1], xy_overlap=(0.5, 0.5))
+        windows3 = self.__slide_windows(img, x_start_stop= x[2], y_start_stop = y[2], 
+                            xy_window= xy[2], xy_overlap=(0.5, 0.5))
+        windows4 = self.__slide_windows(img, x_start_stop= x[3], y_start_stop = y[3], 
+                            xy_window= xy[3], xy_overlap=(0.5, 0.5))
+
+        windows_list = list(windows1 + windows2 + windows3 + windows4)
 
 
-
-        # hot_windows = self.get_some_hot_windows(img, x_start_stop=[400, 1280], y_start_stop=[350, 500], 
-        #                          xy_window=(100, 100),
-        #                          xy_overlap=(0.5, 0.5),
-        #                          visualise=False)
-
-        # total_windows = self.add_windows(total_windows, hot_windows)
-
-
-        
+ 
+        hot_windows = self.__classify_windows(img, windows_list)
+       
         if visualise:
-            hot_window_img = self.__draw_boxes(img, total_windows, color=(0, 0, 255), thick=6)                    
+            window_img = self.__draw_boxes(img, hot_windows, color=(0, 0, 255), thick=6)                    
 
-            plt.figure(figsize=(10,6))
-            plt.imshow(hot_window_img)
-            plt.tight_layout()
-            plt.show()
+            return window_img
+            # plt.figure(figsize=(10,6))
+            # plt.imshow(window_img)
+            # plt.tight_layout()
+            # plt.show()
             
 
-        return total_windows
-
-    def add_windows(self, total_windows, hot_windows):
-        """
-        Simple function for adding windows together.
-        """
-        if not hot_windows:
-            return total_windows
-
-        for window in hot_windows:
-            total_windows.append(window)
-        return total_windows
+        return hot_windows
 
 
 
