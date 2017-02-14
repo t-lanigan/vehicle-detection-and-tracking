@@ -54,7 +54,7 @@ class WindowFinder(object):
                                     './data/vehicles/GTI_Left']
 
         ######Classifiers                            
-        self.pred_thresh = 0.58 #Increase to decrease likelihood of detection.
+        self.pred_thresh = 0.55 #Increase to decrease likelihood of detection.
         
         ###### Variable for Classifier and Feature Scaler ##########
         self.untrained_clf = RandomForestClassifier(n_estimators=100, max_features = 2,
@@ -424,7 +424,7 @@ class WindowFinder(object):
         """
         windows_list = []
         # define the minimum window size
-        x_min =[300, 1280]
+        x_min =[600, 1280]
         y_min =[400, 530]
         xy_min = (80, 80)
 
@@ -591,7 +591,7 @@ class VehicleTracker(object):
         self.detected_cars = []
 
 
-    def image_pipeline(self, img, hot_windows):
+    def image_pipeline(self, img, hot_windows, return_img=True):
 
         # make a copy of the incial image
         draw_img = np.copy(img)
@@ -621,10 +621,10 @@ class VehicleTracker(object):
         # by thresholding the heatmap value
         certain_heatmap = np.copy(self.heatmap)
         # get area of higher certainty by thredholding the heatmap
-        eertain_heatmap= self.__apply_lower_threshold(heatmap_sure, 0.97)
+        certain_heatmap= self.__apply_lower_threshold(certain_heatmap, 0.97)
 
         # Find bounding boxes
-        labels = label(certain)
+        labels = label(certain_heatmap)
         bounding_boxes = self.__find_labeled_bboxes(img, labels)
                
         # find centroy and size of bounding box
@@ -644,7 +644,7 @@ class VehicleTracker(object):
                 # update bounding box height using moving average
                 self.detected_cars[k].height =  math.ceil(0.9*self.detected_cars[k].height + 0.1*box_size[n][1])
                 # update detected value
-                self.detected_cars[k].detected = self.detected_cars[k].detected + 0.22
+                self.detected_cars[k].detected = self.detected_cars[k].detected + 0.23
 
             else: # add new car
                 new_car = Car()
@@ -664,12 +664,12 @@ class VehicleTracker(object):
             for car in detected_cars2:
                 # if the detected value greater than the threshold add to the list
                 # if not discard
-                if car.detected > 0.15: 
+                if car.detected > 0.17: 
                     # add to the detected cars list
                     self.detected_cars.append(car)
                 
         # find car object that is consistent
-        car_boxes = self.__find_car_box(detected_threshold = 0.55) #0.51
+        car_boxes = self.__find_car_box(detected_threshold = 0.51) #0.51
         # draw bounding boxes on car object that is more certain
         draw_img = self.__draw_boxes(draw_img, car_boxes, color=(128, 0, 0), thick=5)         
                 
@@ -677,7 +677,10 @@ class VehicleTracker(object):
         for car in self.detected_cars:
             car.detected = car.detected*0.85 # depreciate old value
         
-        return draw_img
+        if return_img:
+            return draw_img
+        else:
+            return car_boxes, wrap_img
 
     def __apply_lower_threshold(self, heatmap, lower):
         # Zero out pixels below the threshold
@@ -725,7 +728,7 @@ class VehicleTracker(object):
 
     # define a function to find nearby car object 
     def __track_car(self, cntrd,old_Cars):
-        threshod_dist = 40 # the maxium distance to consider nearby
+        threshod_dist = 50 # the maxium distance to consider nearby
         Dist = [] # a list of distance
         if not old_Cars: # if the list of nearby cars is empty
             # return car not found 

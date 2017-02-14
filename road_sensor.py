@@ -107,18 +107,21 @@ class RoadSensor(object):
         """
         
         ##### Lane finding pipeline #######
-        # resized     = self.__resize_image(img)
-        # undistorted = self.__correct_distortion(resized)
-        # warped      = self.__warp_image_to_biv(undistorted)
-        # thresholded = self.__threshold_image(warped)
-        # lines       = self.__get_lane_lines(thresholded)
-        # result      = self.__draw_lane_lines(undistorted, thresholded, include_stats=True)
+        resized     = self.__resize_image(img)
+        undistorted = self.__correct_distortion(resized)
+        warped      = self.__warp_image_to_biv(undistorted)
+        thresholded = self.__threshold_image(warped)
+        lines       = self.__get_lane_lines(thresholded)
+        lane_img    = self.__draw_lane_lines(undistorted, thresholded, include_stats=True)
 
 
         ##### Vehicle Tracking pipeline #####
 
-        hot_windows = self.windFinder.get_hot_windows(img)
-        result = self.vTracker.image_pipeline(img, hot_windows)
+        hot_windows         = self.windFinder.get_hot_windows(img)
+        car_boxes, wrap_img = self.vTracker.image_pipeline(img, hot_windows,
+                                                           return_img=False)        
+        # img = cv2.addWeighted(img, 1, wrap_img, 0.5, 0)
+        result   = self.__draw_boxes(lane_img, car_boxes)
 
         return result
 
@@ -133,6 +136,18 @@ class RoadSensor(object):
                                           lines,
                                           self.g.M_inv,
                                           include_stats)
+
+    def __draw_boxes(self, img, bboxes, color=(128, 0, 0), thick=4):
+        """Draws boxes on image from a list of windows"""
+
+        # Make a copy of the image
+        imcopy = np.copy(img)
+        # Iterate through the bounding boxes
+        for bbox in bboxes:
+            # Draw a rectangle given bbox coordinates
+            cv2.rectangle(imcopy, bbox[0], bbox[1], color, thick)
+        # Return the image copy with boxes drawn
+        return imcopy
 
     def __get_lane_lines(self, img):
 
