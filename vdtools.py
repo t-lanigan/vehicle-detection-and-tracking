@@ -3,14 +3,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 from skimage.feature import hog
-from sklearn.svm import LinearSVC, SVC
+from sklearn.svm import LinearSVC
 from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import recall_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from scipy.ndimage.measurements import label
 
-from keras.models import load_model
+from scipy.ndimage.measurements import label
+import math
+
+# from keras.models import load_model
 
 import glob
 
@@ -19,13 +21,13 @@ import time
 
 
 class WindowFinder(object):
-    """docstring for WindowFinder"""
+    """Finds windows in an image that contain a car."""
     def __init__(self):
         
         ### Hyperparameters, if changed ->(load_saved = False) If
         ### the classifier is changes load_feaures can be True
 
-        self.load_saved     = True # Loads classifier and scaler
+        self.load_saved     = True# Loads classifier and scaler
         self.load_features  = True # Loads saved features (to train new classifier)
 
         self.sample_size    = 15000 # How many to sample from training set
@@ -58,9 +60,8 @@ class WindowFinder(object):
         self.untrained_clf = RandomForestClassifier(n_estimators=100, max_features = 2,
                              min_samples_leaf = 4,max_depth = 25)
 
-        
 
-                
+               
         self.trained_clf, self.scaler = self.__get_classifier_and_scaler()
 
         ###### Variables for CNN ##########
@@ -90,6 +91,7 @@ class WindowFinder(object):
             print('Training a %s...' % self.untrained_clf.__class__.__name__)
             
             rand_state = np.random.randint(0, 100)
+
             
             # TODO: Get scaled_X, and y here.
             car_features, notcar_features = self.__get_features()
@@ -98,7 +100,7 @@ class WindowFinder(object):
 
 
             X_train, X_test, y_train, y_test = train_test_split(
-                scaled_X, y, test_size=0.15, random_state=rand_state)
+                scaled_X, y, test_size=0.05, random_state=rand_state)
 
             # Use a linear SVC 
             clf = self.untrained_clf
@@ -108,7 +110,9 @@ class WindowFinder(object):
             t2 = time.time()
             print(round(t2-t, 2), 'Seconds to train CLF...')
             # Check the score of the SVC
-            print('Test Accuracy of CLF = ', round(clf.score(X_test, y_test), 4))
+            preds = clf.predict(X_test)
+
+            print('Test Recall of CLF = ', round(recall_score(y_test, preds), 4))
             # Check the prediction time for a single sample
             t=time.time()
 
@@ -300,6 +304,11 @@ class WindowFinder(object):
             features = self.__single_img_features(test_img)
             test_features = self.scaler.transform(np.array(features).reshape(1, -1))
             prediction = self.trained_clf.predict_proba(test_features)[:,1]
+            
+
+            ## SVC prediction
+            # prediction = self.trained_clf.predict(test_features)
+
 
             ######### Neural Network Predicion ########
             # test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]],
@@ -309,7 +318,7 @@ class WindowFinder(object):
             # prediction = self.nn.predict_classes(test_img, verbose=0)
 
 
-            if prediction > self.pred_thresh:
+            if prediction >= self.pred_thresh:
                 on_windows.append(window)
 
         #8) Return windows for positive detections
@@ -414,7 +423,7 @@ class WindowFinder(object):
 
         """
         windows_list = []
-
+        # define the minimum window size
         x_min =[300, 1280]
         y_min =[400, 530]
         xy_min = (80, 80)
@@ -422,7 +431,7 @@ class WindowFinder(object):
         # define the maxium window size
         x_max =[300, 1280]
         y_max =[400, 700]
-        xy_max = (160, 160)
+        xy_max = (195, 195)
         # intermedian windows
         n = 4 # the number of total window sizes
         x = []
@@ -590,7 +599,7 @@ class VehicleTracker(object):
         # find windows that contains cars
         
         # draw windows that contains cars
-        draw_img = self.__draw_boxes(draw_img, hot_windows, color=(0, 0, 255), thick=2) 
+        # draw_img = self.__draw_boxes(draw_img, hot_windows, color=(0, 0, 255), thick=2) 
 
 
         # create a new heat map
@@ -610,12 +619,12 @@ class VehicleTracker(object):
 
         # create a new heatmap to show the heatmap with more certainty 
         # by thresholding the heatmap value
-        heatmap_sure = np.copy(self.heatmap)
+        certain_heatmap = np.copy(self.heatmap)
         # get area of higher certainty by thredholding the heatmap
-        heatmap_sure = self.__apply_lower_threshold(heatmap_sure, 0.97)
+        eertain_heatmap= self.__apply_lower_threshold(heatmap_sure, 0.97)
 
         # Find bounding boxes
-        labels = label(heatmap_sure)
+        labels = label(certain)
         bounding_boxes = self.__find_labeled_bboxes(img, labels)
                
         # find centroy and size of bounding box
@@ -624,7 +633,7 @@ class VehicleTracker(object):
         new_cars = [] # inicalize a list of new found cars
         for n in range(len(centroids)):
             # find nearby car object          
-            car_found, k = self.__track_car(centroids[n],self.detected_cars) # return a number 
+            car_found, k = self.__track_car(centroids[n], self.detected_cars) 
             if car_found  == True:
                 # update detected car object
                 # update centroid using moving average
@@ -635,18 +644,18 @@ class VehicleTracker(object):
                 # update bounding box height using moving average
                 self.detected_cars[k].height =  math.ceil(0.9*self.detected_cars[k].height + 0.1*box_size[n][1])
                 # update detected value
-                self.detected_cars[k].detected = self.detected_cars[k].detected + 0.2
+                self.detected_cars[k].detected = self.detected_cars[k].detected + 0.22
 
             else: # add new car
                 new_car = Car()
-                # inicalize the car object using the size 
+                # initialize the car object using the size 
                 # and centroid of the bounding box
                 new_car.average_centroid = centroids[n]
                 new_car.width =  box_size[n][0]
                 new_car.height = box_size[n][1]            
                 new_cars.append(new_car)
                 
-        # combine new_cars to detected cars #################################################
+        # combine new_cars to detected cars
         detected_cars2 = list(self.detected_cars) # make a copy
         self.detected_cars = new_cars[:] # add new cars
         
@@ -655,18 +664,18 @@ class VehicleTracker(object):
             for car in detected_cars2:
                 # if the detected value greater than the threshold add to the list
                 # if not discard
-                if car.detected > 0.17: 
+                if car.detected > 0.15: 
                     # add to the detected cars list
                     self.detected_cars.append(car)
                 
         # find car object that is consistent
         car_boxes = self.__find_car_box(detected_threshold = 0.55) #0.51
         # draw bounding boxes on car object that is more certain
-        draw_img = self.__draw_boxes(draw_img, car_boxes, color=(255, 0, 0), thick=5)         
+        draw_img = self.__draw_boxes(draw_img, car_boxes, color=(128, 0, 0), thick=5)         
                 
         # depreciate old car values, so if it no longer detacted the value fade away
         for car in self.detected_cars:
-            car.detected = car.detected*0.8 # depreciate old value
+            car.detected = car.detected*0.85 # depreciate old value
         
         return draw_img
 
@@ -733,6 +742,8 @@ class VehicleTracker(object):
                 car_found = True
             else:
                 car_found = False
+
+            return car_found, car_id
 
     def __find_car_box(self, detected_threshold = 0.51):
         """
