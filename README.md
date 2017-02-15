@@ -66,7 +66,7 @@ A Histogram of Oriented Gradients was also used to extract features from the ima
 
 ![Hog Features](report_images/hog.png)
 
-Each cell in the HOG features contains 12x12 = 144 pixels. Each of the gradients are slotted into 8 different directional bins.
+Each cell in the HOG features contains 12x12 = 144 pixels. Each of the gradients are slotted into 8 different directional bins. These properties were selected using trial and error.
 
 ## Feature scaling
 
@@ -99,6 +99,8 @@ The total parameters used and amount of features are as follows:
 * number of features = 512
 
 **Total number of feature:** 968
+
+The features parameters were selected using trial and error and the validation score of the classifiers.
 
 # Training a classifier
 
@@ -326,6 +328,8 @@ The network train for this project, however, performed poorly when compared to t
 # Discussion
 
 From the heatmap boxes in the video, it can seen that the classifier gets many false positives, especially on the sides rails. This highlights a need to work more on the machine learning based image detection algorithm. A tempting candidate is a convolutional neural network, however the initial investigation into using CNNs did not yield better results than the RandomForest classifier.
+
+As the model iterates over several frames before it indentifies a car, cars that are moving quickly in the opposite direction are likely to be missed.
 
 It is evident that the very high validation results (_~98.8%_) and lower test results from all of the false positives in the video means that the classifier is overfitting drastically. One method for overcoming this would be to obtain more data and perform data augmentation. A properly designed CNN with lots of data, data augmentation, and using dropout and regularization would be considered to be idea, however this is out of the scope of this project.
 
